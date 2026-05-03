@@ -1,0 +1,147 @@
+# 测试与交付
+
+<cite>
+**本文档引用的文件**
+- [AGENTS.md](file://AGENTS.md)
+- [.github/workflows/quality-gates.yml](file://.github/workflows/quality-gates.yml)
+- [scripts/lint.sh](file://scripts/lint.sh)
+- [tests/scripts/run-unit-all.sh](file://tests/scripts/run-unit-all.sh)
+- [tests/scripts/check-refactor-line-gate.sh](file://tests/scripts/check-refactor-line-gate.sh)
+- [webui/package.json](file://webui/package.json)
+</cite>
+
+## 目录
+
+1. [简介](#简介)
+2. [项目结构](#项目结构)
+3. [核心组件](#核心组件)
+4. [架构总览](#架构总览)
+5. [详细组件分析](#详细组件分析)
+6. [故障排查指南](#故障排查指南)
+7. [结论](#结论)
+
+## 简介
+
+本项目的交付门禁由仓库 `AGENTS.md` 和 GitHub Actions 共同定义。代码修改应运行 lint、重构行数门禁、Go/Node 单测和 WebUI 构建。文档修改至少需要 Markdown diff 检查和旧项目残留扫描。
+
+**章节来源**
+- [AGENTS.md](file://AGENTS.md)
+- [.github/workflows/quality-gates.yml](file://.github/workflows/quality-gates.yml)
+
+## 项目结构
+
+```mermaid
+graph TB
+subgraph "Local Gates"
+LINT["scripts/lint.sh"]
+LINE["tests/scripts/check-refactor-line-gate.sh"]
+UNIT["tests/scripts/run-unit-all.sh"]
+WEB["npm run build --prefix webui"]
+end
+subgraph "CI"
+QG["quality-gates.yml"]
+REL["release-artifacts.yml"]
+end
+subgraph "Tests"
+GO["Go tests"]
+NODE["Node stream/tool tests"]
+RAW["raw stream samples"]
+end
+LINT --> QG
+LINE --> QG
+UNIT --> GO
+UNIT --> NODE
+WEB --> QG
+RAW --> NODE
+QG --> REL
+```
+
+**图表来源**
+- [.github/workflows/quality-gates.yml](file://.github/workflows/quality-gates.yml)
+- [tests/scripts/run-unit-all.sh](file://tests/scripts/run-unit-all.sh)
+
+**章节来源**
+- [tests/scripts/run-unit-go.sh](file://tests/scripts/run-unit-go.sh)
+- [tests/scripts/run-unit-node.sh](file://tests/scripts/run-unit-node.sh)
+
+## 核心组件
+
+- `scripts/lint.sh`：运行 golangci-lint 格式化检查和静态分析，必要时自动 bootstrap 指定版本。
+- `check-refactor-line-gate.sh`：限制重构行数漂移。
+- `run-unit-all.sh`：串行运行 Go 单元测试和 Node 测试。
+- `npm run build --prefix webui`：验证管理台可生产构建。
+- `quality-gates.yml`：在 push/PR 上运行 lint、单测、WebUI build 和跨平台构建。
+- `release-artifacts.yml`：发布时构建压缩包、Docker 镜像和 checksum。
+
+**章节来源**
+- [scripts/lint.sh](file://scripts/lint.sh)
+- [.github/workflows/release-artifacts.yml](file://.github/workflows/release-artifacts.yml)
+
+## 架构总览
+
+```mermaid
+sequenceDiagram
+participant Dev as Developer
+participant Local as Local Scripts
+participant CI as GitHub Actions
+participant Release as Release Artifacts
+Dev->>Local: run lint/unit/build gates
+Local-->>Dev: pass/fail
+Dev->>CI: push or PR
+CI->>CI: quality gates
+alt release
+CI->>Release: build archives and Docker images
+Release-->>Dev: tar.gz zip sha256sums image tags
+end
+```
+
+**图表来源**
+- [.github/workflows/quality-gates.yml](file://.github/workflows/quality-gates.yml)
+- [.github/workflows/release-artifacts.yml](file://.github/workflows/release-artifacts.yml)
+
+**章节来源**
+- [scripts/build-release-archives.sh](file://scripts/build-release-archives.sh)
+
+## 详细组件分析
+
+### 推荐本地命令
+
+```bash
+./scripts/lint.sh
+./tests/scripts/check-refactor-line-gate.sh
+./tests/scripts/run-unit-all.sh
+npm run build --prefix webui
+```
+
+### 文档专用检查
+
+```bash
+git diff --check
+rg -n -i "<旧项目关键词>|<旧仓库地址>|<旧维护者标识>" README.MD README.en.md API.md API.en.md docs
+```
+
+### 发布产物
+
+Release 构建会生成 Linux、macOS、Windows 多架构压缩包，构建 GHCR 镜像，并生成 `sha256sums.txt`。
+
+**章节来源**
+- [tests/scripts/check-refactor-line-gate.sh](file://tests/scripts/check-refactor-line-gate.sh)
+- [scripts/build-release-archives.sh](file://scripts/build-release-archives.sh)
+
+## 故障排查指南
+
+- lint 下载失败：检查网络或手动设置 `GOLANGCI_LINT_BIN`。
+- Node 测试失败：先运行 `npm ci --prefix webui`，再执行 Node 测试脚本。
+- WebUI 构建失败：检查 Node 版本是否满足 CI 的 Node 24。
+- 跨平台构建失败：确认 Go 版本为 1.26.x，且没有 CGO 依赖。
+
+**章节来源**
+- [.github/workflows/quality-gates.yml](file://.github/workflows/quality-gates.yml)
+- [Dockerfile](file://Dockerfile)
+
+## 结论
+
+测试与交付的目标是保证多协议兼容层、管理台和发布产物同时可用。只改文档时可以不运行完整 Go/Node 门禁，但必须保证文档没有旧项目残留和 Markdown 空白错误。
+
+**章节来源**
+- [AGENTS.md](file://AGENTS.md)
